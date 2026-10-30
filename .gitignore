@@ -1,0 +1,17 @@
+# Local agent tooling
+.agents/
+agent/
+.claude/
+.codegraph/
+skills-lock.json
+WORKFLOW.md
+
+# Build and runtime output
+backend/target/
+__pycache__/
+.venv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
