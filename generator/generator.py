@@ -1,9 +1,12 @@
 """Command-line entry point for the vehicle simulator."""
 
 import argparse
+import json
 import random
+import sys
+import time
 
-from simulator import create_fleet
+from simulator import Vehicle, create_fleet, position_record
 
 
 def parse_options() -> argparse.Namespace:
@@ -26,13 +29,21 @@ def parse_options() -> argparse.Namespace:
 def main() -> None:
     """Run the vehicle simulator command-line application."""
     options = parse_options()
-    run_simulation(options)  # TODO: (emit the initial fleet) run_simulation
+    run_simulation(options)
 
 
 def run_simulation(options: argparse.Namespace) -> None:
     """Create the fleet and emit its initial positions."""
     fleet = create_fleet(options.vehicles, random.Random())
-    # TODO: (emit one JSON record per vehicle) emit_snapshot
+    ts = time.time_ns() // 1_000_000
+    emit_snapshot(fleet, ts)
+
+
+def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
+    """Write one JSON record per vehicle for a single tick."""
+    for vehicle in fleet:
+        print(json.dumps(position_record(vehicle, ts)))
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":

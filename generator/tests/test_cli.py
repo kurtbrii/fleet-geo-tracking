@@ -1,13 +1,31 @@
 """Tests for the vehicle simulator command-line interface."""
 
+import importlib.util
+import json
 from pathlib import Path
+import re
 import subprocess
 import sys
+import time
+from types import ModuleType
 
 import pytest
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "generator.py"
+
+
+def _load_cli_module() -> ModuleType:
+    """Load the CLI script as a module without running its entry guard."""
+    spec = importlib.util.spec_from_file_location("generator_cli", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(SCRIPT.parent))
+    return module
 
 
 def test_help_describes_defaults() -> None:
@@ -25,26 +43,57 @@ def test_help_describes_defaults() -> None:
     assert "default: 1000" in result.stdout
 
 
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        [],
-        ["--vehicles", "2", "--interval-ms", "2000"],
-        ["--vehicles", "175760000"],
-    ],
-)
-def test_valid_options_exit_without_events(arguments: list[str]) -> None:
-    """Accept defaults and valid overrides without emitting simulation events."""
+def test_small_fleet_emits_one_json_snapshot() -> None:
+    """Emit exactly one valid six-field record per vehicle and nothing else."""
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), *arguments],
+        [sys.executable, str(SCRIPT), "--vehicles", "3", "--interval-ms", "2000"],
         capture_output=True,
         text=True,
         check=False,
     )
 
     assert result.returncode == 0
-    assert result.stdout == ""
     assert result.stderr == ""
+    records = [json.loads(line) for line in result.stdout.splitlines()]
+    assert len(records) == 3
+    assert len({record["id"] for record in records}) == 3
+
+    now_ms = time.time_ns() // 1_000_000
+    for record in records:
+        assert set(record) == {"id", "lat", "lng", "bearing", "speed", "ts"}
+        assert re.fullmatch(r"[A-Z]{3}[0-9]{4}", record["id"])
+        assert 14.35 <= record["lat"] <= 14.78
+        assert 120.90 <= record["lng"] <= 121.13
+        assert 0 <= record["bearing"] < 360
+        assert 0 < record["speed"] <= 200
+        assert isinstance(record["ts"], int)
+        assert abs(record["ts"] - now_ms) < 60_000
+
+
+def test_default_options_emit_the_default_fleet() -> None:
+    """Use the documented 1000-vehicle default when options are omitted."""
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert len(result.stdout.splitlines()) == 1000
+
+
+def test_maximum_vehicle_count_is_accepted_without_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accept the plate-space limit at the parser boundary without building it."""
+    cli = _load_cli_module()
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "175760000"])
+
+    options = cli.parse_options()
+
+    assert options.vehicles == 175_760_000
 
 
 @pytest.mark.parametrize(
