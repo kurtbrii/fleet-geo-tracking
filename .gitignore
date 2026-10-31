@@ -5,6 +5,11 @@ agent/
 .codegraph/
 skills-lock.json
 WORKFLOW.md
+epics/
+tasks/
+SPEC.md
+STACK.md
+docs/ideas/
 
 # Build and runtime output
 backend/target/
