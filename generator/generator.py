@@ -10,7 +10,11 @@ from simulator import Vehicle, advance_vehicle, create_fleet
 
 
 def parse_options() -> argparse.Namespace:
-    """Parse and validate the supported command-line options."""
+    """Parse and validate the supported command-line options.
+
+    Returns:
+        argparse.Namespace(vehicles=1000, interval_ms=1000) when run without options
+    """
     parser = argparse.ArgumentParser(
         description="Generate simulated vehicle positions.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -27,13 +31,24 @@ def parse_options() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Run the vehicle simulator command-line application."""
+    """Run the vehicle simulator command-line application.
+
+    Returns:
+        None; runs the simulation until the current tick path finishes
+    """
     options = parse_options()
     run_simulation(options)
 
 
 def run_simulation(options: argparse.Namespace) -> None:
-    """Create the fleet, emit it, then emit one advanced tick."""
+    """Create the fleet, emit it, then emit one advanced tick.
+
+    Args:
+        options: argparse.Namespace(vehicles=2, interval_ms=2000)
+
+    Returns:
+        None; writes two snapshots of two JSON records each
+    """
     rng = random.Random()
     fleet = create_fleet(options.vehicles, rng)
     emit_snapshot(fleet, time.time_ns() // 1_000_000)
@@ -43,9 +58,17 @@ def run_simulation(options: argparse.Namespace) -> None:
 
 
 def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
-    """Write one JSON record per vehicle for a single tick."""
+    """Write one JSON record per vehicle for a single tick.
+
+    Args:
+        fleet: [Vehicle(id="AAA0000", lat=14.5, lng=121.0, bearing=90.0, speed=45.0)]
+        ts: 1793400000000
+
+    Returns:
+        None; writes {"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}
+    """
     for vehicle in fleet:
-        vehicle_record = {
+        vehicle_record: dict[str, str | float | int] = {
             "id": vehicle.id,
             "lat": vehicle.lat,
             "lng": vehicle.lng,
