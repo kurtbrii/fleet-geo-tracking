@@ -6,7 +6,7 @@ import random
 import sys
 import time
 
-from simulator import Vehicle, create_fleet
+from simulator import Vehicle, advance_vehicle, create_fleet
 
 
 def parse_options() -> argparse.Namespace:
@@ -33,10 +33,13 @@ def main() -> None:
 
 
 def run_simulation(options: argparse.Namespace) -> None:
-    """Create the fleet and emit its initial positions."""
-    fleet = create_fleet(options.vehicles, random.Random())
-    ts = time.time_ns() // 1_000_000
-    emit_snapshot(fleet, ts)
+    """Create the fleet, emit it, then emit one advanced tick."""
+    rng = random.Random()
+    fleet = create_fleet(options.vehicles, rng)
+    emit_snapshot(fleet, time.time_ns() // 1_000_000)
+    elapsed_seconds = options.interval_ms / 1000.0
+    fleet = [advance_vehicle(vehicle, elapsed_seconds, rng) for vehicle in fleet]
+    emit_snapshot(fleet, time.time_ns() // 1_000_000)
 
 
 def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:

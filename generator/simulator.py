@@ -1,7 +1,14 @@
 """Fleet state for the vehicle simulator."""
 
 from dataclasses import dataclass
+import math
 import random
+
+LAT_MIN, LAT_MAX = 14.35, 14.78
+LNG_MIN, LNG_MAX = 120.90, 121.13
+KM_PER_LATITUDE_DEGREE = 110.574
+KM_PER_LONGITUDE_DEGREE_AT_EQUATOR = 111.320
+MAX_HEADING_DRIFT = 10.0
 
 
 @dataclass
@@ -22,13 +29,48 @@ def create_fleet(count: int, rng: random.Random) -> list[Vehicle]:
     return [
         Vehicle(
             id=plate_for_index(index),
-            lat=rng.uniform(14.35, 14.78),
-            lng=rng.uniform(120.90, 121.13),
+            lat=rng.uniform(LAT_MIN, LAT_MAX),
+            lng=rng.uniform(LNG_MIN, LNG_MAX),
             bearing=rng.uniform(0.0, 360.0) % 360.0,
             speed=rng.uniform(1.0, 200.0),
         )
         for index in range(count)
     ]
+
+
+def reflect_coordinate(value: float, low: float, high: float) -> tuple[float, bool]:
+    """Reflect a target coordinate into a box, reporting an odd edge crossing."""
+    span = high - low
+    steps = (value - low) / span
+    crossings = math.floor(steps)
+    fraction = steps - crossings
+    if crossings % 2 == 0:
+        reflected = low + fraction * span
+    else:
+        reflected = high - fraction * span
+    return min(high, max(low, reflected)), crossings % 2 == 1
+
+
+def advance_vehicle(vehicle: Vehicle, elapsed_seconds: float, rng: random.Random) -> Vehicle:
+    """Return a vehicle after one tick of heading drift and movement."""
+    bearing = (vehicle.bearing + rng.uniform(-MAX_HEADING_DRIFT, MAX_HEADING_DRIFT)) % 360.0
+    km_per_longitude_degree = KM_PER_LONGITUDE_DEGREE_AT_EQUATOR * math.cos(math.radians(vehicle.lat))
+    distance_km = vehicle.speed * elapsed_seconds / 3600.0
+    lat_target = vehicle.lat + distance_km * math.cos(math.radians(bearing)) / KM_PER_LATITUDE_DEGREE
+    lng_target = vehicle.lng + distance_km * math.sin(math.radians(bearing)) / km_per_longitude_degree
+    lat, crossed_lat = reflect_coordinate(lat_target, LAT_MIN, LAT_MAX)
+    lng, crossed_lng = reflect_coordinate(lng_target, LNG_MIN, LNG_MAX)
+    if crossed_lat:
+        bearing = 180.0 - bearing
+    if crossed_lng:
+        bearing = -bearing
+    return Vehicle(
+        id=vehicle.id,
+        lat=lat,
+        lng=lng,
+        bearing=bearing % 360.0,
+        speed=vehicle.speed,
+    )
 
 
 def plate_for_index(index: int) -> str:

@@ -43,8 +43,8 @@ def test_help_describes_defaults() -> None:
     assert "default: 1000" in result.stdout
 
 
-def test_small_fleet_emits_one_json_snapshot() -> None:
-    """Emit exactly one valid six-field record per vehicle and nothing else."""
+def test_small_fleet_emits_initial_and_advanced_snapshots() -> None:
+    """Emit two valid snapshots that keep identity and speed while moving."""
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--vehicles", "3", "--interval-ms", "2000"],
         capture_output=True,
@@ -55,23 +55,30 @@ def test_small_fleet_emits_one_json_snapshot() -> None:
     assert result.returncode == 0
     assert result.stderr == ""
     records = [json.loads(line) for line in result.stdout.splitlines()]
-    assert len(records) == 3
-    assert len({record["id"] for record in records}) == 3
+    assert len(records) == 6
+    initial, advanced = records[:3], records[3:]
+    assert [record["id"] for record in initial] == [
+        record["id"] for record in advanced
+    ]
+    assert len({record["id"] for record in initial}) == 3
 
     now_ms = time.time_ns() // 1_000_000
-    for record in records:
-        assert set(record) == {"id", "lat", "lng", "bearing", "speed", "ts"}
-        assert re.fullmatch(r"[A-Z]{3}[0-9]{4}", record["id"])
-        assert 14.35 <= record["lat"] <= 14.78
-        assert 120.90 <= record["lng"] <= 121.13
-        assert 0 <= record["bearing"] < 360
-        assert 0 < record["speed"] <= 200
-        assert isinstance(record["ts"], int)
-        assert abs(record["ts"] - now_ms) < 60_000
+    for first, second in zip(initial, advanced):
+        for record in (first, second):
+            assert set(record) == {"id", "lat", "lng", "bearing", "speed", "ts"}
+            assert re.fullmatch(r"[A-Z]{3}[0-9]{4}", record["id"])
+            assert 14.35 <= record["lat"] <= 14.78
+            assert 120.90 <= record["lng"] <= 121.13
+            assert 0 <= record["bearing"] < 360
+            assert 0 < record["speed"] <= 200
+            assert isinstance(record["ts"], int)
+            assert abs(record["ts"] - now_ms) < 60_000
+        assert first["speed"] == second["speed"]
+        assert (first["lat"], first["lng"]) != (second["lat"], second["lng"])
 
 
-def test_default_options_emit_the_default_fleet() -> None:
-    """Use the documented 1000-vehicle default when options are omitted."""
+def test_default_options_emit_initial_and_advanced_snapshots() -> None:
+    """Use the documented 1000-vehicle default for both emitted snapshots."""
     result = subprocess.run(
         [sys.executable, str(SCRIPT)],
         capture_output=True,
@@ -81,7 +88,7 @@ def test_default_options_emit_the_default_fleet() -> None:
 
     assert result.returncode == 0
     assert result.stderr == ""
-    assert len(result.stdout.splitlines()) == 1000
+    assert len(result.stdout.splitlines()) == 2000
 
 
 def test_maximum_vehicle_count_is_accepted_without_allocation(
