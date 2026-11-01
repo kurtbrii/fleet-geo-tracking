@@ -6,7 +6,7 @@ import random
 import sys
 import time
 
-from simulator import Vehicle, create_fleet, position_record
+from simulator import Vehicle, create_fleet
 
 
 def parse_options() -> argparse.Namespace:
@@ -42,7 +42,16 @@ def run_simulation(options: argparse.Namespace) -> None:
 def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
     """Write one JSON record per vehicle for a single tick."""
     for vehicle in fleet:
-        print(json.dumps(position_record(vehicle, ts)))
+        vehicle_record = {
+            "id": vehicle.id,
+            "lat": vehicle.lat,
+            "lng": vehicle.lng,
+            "bearing": vehicle.bearing,
+            "speed": vehicle.speed,
+            "ts": ts,
+        }
+
+        print(json.dumps(vehicle_record))
     sys.stdout.flush()
 
 
