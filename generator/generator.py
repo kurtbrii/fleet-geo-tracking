@@ -1,6 +1,7 @@
 """Command-line entry point for the vehicle simulator."""
 
 import argparse
+from collections.abc import Callable
 import json
 import random
 import sys
@@ -34,27 +35,54 @@ def main() -> None:
     """Run the vehicle simulator command-line application.
 
     Returns:
-        None; runs the simulation until the current tick path finishes
+        None; runs until interrupted, then exits without a traceback
     """
     options = parse_options()
-    run_simulation(options)
+    try:
+        run_simulation(options)
+    except KeyboardInterrupt:
+        pass
 
 
-def run_simulation(options: argparse.Namespace) -> None:
-    """Create the fleet, emit it, then emit one advanced tick.
+def run_simulation(
+    options: argparse.Namespace,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    wait: Callable[[float], None] = time.sleep,
+    tick_limit: int | None = None,
+) -> None:
+    """Create the fleet, emit it, then emit one tick per target interval.
 
     Args:
         options: argparse.Namespace(vehicles=2, interval_ms=2000)
+        clock: time.monotonic
+        wait: time.sleep
+        tick_limit: None runs until interrupted; 3 emits three later ticks
 
     Returns:
-        None; writes two snapshots of two JSON records each
+        None; writes one snapshot of two JSON records per tick
     """
     rng = random.Random()
     fleet = create_fleet(options.vehicles, rng)
+    interval_seconds = options.interval_ms / 1000.0
+    last_tick = clock()
     emit_snapshot(fleet, time.time_ns() // 1_000_000)
-    elapsed_seconds = options.interval_ms / 1000.0
-    fleet = [advance_vehicle(vehicle, elapsed_seconds, rng) for vehicle in fleet]
-    emit_snapshot(fleet, time.time_ns() // 1_000_000)
+    next_tick = last_tick + interval_seconds
+    ticks = 0
+    while tick_limit is None or ticks < tick_limit:
+        now = clock()
+        if now < next_tick:
+            wait(next_tick - now)
+            now = clock()
+        elapsed_seconds = now - last_tick
+        fleet = [advance_vehicle(vehicle, elapsed_seconds, rng) for vehicle in fleet]
+        emit_snapshot(fleet, time.time_ns() // 1_000_000)
+        last_tick = now
+        next_tick += interval_seconds
+        finished_tick = clock()
+        if next_tick <= finished_tick:
+            next_tick = finished_tick + interval_seconds
+        ticks += 1
 
 
 def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
