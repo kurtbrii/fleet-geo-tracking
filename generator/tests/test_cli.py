@@ -68,9 +68,7 @@ def test_small_fleet_emits_initial_and_advanced_tick(
 ) -> None:
     """Emit two valid snapshots that keep identity and speed while moving."""
     cli = _load_cli_module()
-    monkeypatch.setattr(
-        sys, "argv", [str(SCRIPT), "--vehicles", "3", "--interval-ms", "2000"]
-    )
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "3", "--interval-ms", "2000"])
     options = cli.parse_options()
     fake = FakeClock()
 
@@ -79,9 +77,7 @@ def test_small_fleet_emits_initial_and_advanced_tick(
     records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert len(records) == 6
     initial, advanced = records[:3], records[3:]
-    assert [record["id"] for record in initial] == [
-        record["id"] for record in advanced
-    ]
+    assert [record["id"] for record in initial] == [record["id"] for record in advanced]
     assert len({record["id"] for record in initial}) == 3
 
     now_ms = time.time_ns() // 1_000_000
@@ -118,9 +114,7 @@ def test_later_ticks_wait_for_the_target_interval(
 ) -> None:
     """Wait the full interval before each later tick."""
     cli = _load_cli_module()
-    monkeypatch.setattr(
-        sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"]
-    )
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"])
     options = cli.parse_options()
     fake = FakeClock()
 
@@ -145,9 +139,7 @@ def test_movement_uses_measured_elapsed_time(
 
     simulation_rng = random.Random(7)
     monkeypatch.setattr(cli.random, "Random", lambda: simulation_rng)
-    monkeypatch.setattr(
-        sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"]
-    )
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"])
     options = cli.parse_options()
 
     cli.run_simulation(options, clock=fake.now, wait=late_wait, tick_limit=1)
@@ -170,9 +162,7 @@ def test_slow_output_is_absorbed_without_catch_up_ticks(
         fake.spend(2.5)
 
     monkeypatch.setattr(cli, "emit_snapshot", slow_emit)
-    monkeypatch.setattr(
-        sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"]
-    )
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"])
     options = cli.parse_options()
 
     cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=2)
@@ -204,9 +194,7 @@ def test_maximum_vehicle_count_is_accepted_without_allocation(
         (["--unknown"], "unrecognized arguments"),
     ],
 )
-def test_invalid_options_fail_before_events(
-    arguments: list[str], error_message: str
-) -> None:
+def test_invalid_options_fail_before_events(arguments: list[str], error_message: str) -> None:
     """Reject malformed options with a diagnostic and no event output."""
     result = subprocess.run(
         [sys.executable, str(SCRIPT), *arguments],
@@ -226,9 +214,7 @@ def test_main_exits_cleanly_on_keyboard_interrupt(
 ) -> None:
     """Return normally when the simulation is interrupted."""
     cli = _load_cli_module()
-    monkeypatch.setattr(
-        cli, "parse_options", lambda: SimpleNamespace(vehicles=1, interval_ms=1000)
-    )
+    monkeypatch.setattr(cli, "parse_options", lambda: SimpleNamespace(vehicles=1, interval_ms=1000))
 
     def interrupted(options: SimpleNamespace) -> None:
         raise KeyboardInterrupt

@@ -134,9 +134,7 @@ def test_repeated_ticks_stay_bounded_and_keep_identity_and_speed() -> None:
     initial_speeds = [vehicle.speed for vehicle in fleet]
 
     for _ in range(2000):
-        fleet = [
-            advance_vehicle(vehicle, 1.0, rng) for vehicle in fleet
-        ]
+        fleet = [advance_vehicle(vehicle, 1.0, rng) for vehicle in fleet]
 
     assert [vehicle.id for vehicle in fleet] == initial_ids
     assert [vehicle.speed for vehicle in fleet] == initial_speeds
