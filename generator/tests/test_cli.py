@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import random
 import re
 import signal
 import subprocess
@@ -128,10 +129,38 @@ def test_later_ticks_wait_for_the_target_interval(
     assert fake.waits == [1.0, 1.0, 1.0]
 
 
+def test_movement_uses_measured_elapsed_time(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Move by the real clock delta even when the wait runs late."""
+    cli = _load_cli_module()
+    expected_rng = random.Random(7)
+    vehicle = cli.create_fleet(1, expected_rng)[0]
+    expected = cli.advance_vehicle(vehicle, 2.0, expected_rng)
+    fake = FakeClock()
+
+    def late_wait(seconds: float) -> None:
+        fake.waits.append(seconds)
+        fake.seconds += seconds + 1.0
+
+    simulation_rng = random.Random(7)
+    monkeypatch.setattr(cli.random, "Random", lambda: simulation_rng)
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"]
+    )
+    options = cli.parse_options()
+
+    cli.run_simulation(options, clock=fake.now, wait=late_wait, tick_limit=1)
+
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert len(records) == 2
+    assert (records[1]["lat"], records[1]["lng"]) == (expected.lat, expected.lng)
+
+
 def test_slow_output_is_absorbed_without_catch_up_ticks(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Skip missed deadlines instead of bursting after slow output."""
+    """Tick immediately after slow output instead of bursting to catch up."""
     cli = _load_cli_module()
     fake = FakeClock()
     emit_snapshot = cli.emit_snapshot
@@ -148,7 +177,7 @@ def test_slow_output_is_absorbed_without_catch_up_ticks(
 
     cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=2)
 
-    assert fake.waits == [1.0]
+    assert fake.waits == [0.0, 0.0]
 
 
 def test_maximum_vehicle_count_is_accepted_without_allocation(

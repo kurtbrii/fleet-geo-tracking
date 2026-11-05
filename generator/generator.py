@@ -2,6 +2,7 @@
 
 import argparse
 from collections.abc import Callable
+import itertools
 import json
 import random
 import sys
@@ -65,24 +66,15 @@ def run_simulation(
     rng = random.Random()
     fleet = create_fleet(options.vehicles, rng)
     interval_seconds = options.interval_ms / 1000.0
-    last_tick = clock()
+    previous = clock()
     emit_snapshot(fleet, time.time_ns() // 1_000_000)
-    next_tick = last_tick + interval_seconds
-    ticks = 0
-    while tick_limit is None or ticks < tick_limit:
+    ticks = itertools.count() if tick_limit is None else range(tick_limit)
+    for _ in ticks:
+        wait(max(0.0, interval_seconds - (clock() - previous)))  # sleep only what's left of the interval
         now = clock()
-        if now < next_tick:
-            wait(next_tick - now)
-            now = clock()
-        elapsed_seconds = now - last_tick
-        fleet = [advance_vehicle(vehicle, elapsed_seconds, rng) for vehicle in fleet]
+        fleet = [advance_vehicle(vehicle, now - previous, rng) for vehicle in fleet]
         emit_snapshot(fleet, time.time_ns() // 1_000_000)
-        last_tick = now
-        next_tick += interval_seconds
-        finished_tick = clock()
-        if next_tick <= finished_tick:
-            next_tick = finished_tick + interval_seconds
-        ticks += 1
+        previous = now
 
 
 def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
