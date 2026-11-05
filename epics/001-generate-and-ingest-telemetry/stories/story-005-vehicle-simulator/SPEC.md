@@ -317,3 +317,13 @@ None for the S2 motion defaults.
   environment and recorded story issue #5.
 - 2026-10-31: Approved random initial speed and bounded heading drift, with a
   fixed speed per vehicle to prevent sudden jumps between ticks.
+
+## Deviations
+
+- Overrun timing changed after Task 4 review: the loop now sleeps only what is
+  left of the interval, so after an overrun the next tick runs immediately
+  instead of waiting a fresh interval. Still no catch-up bursts. Done to
+  simplify the loop to one clock variable.
+- "No real sleeps" has one exception: `test_process_stops_cleanly_on_interrupt`
+  runs the real CLI at a 10 ms interval to prove SIGINT exits cleanly, which
+  cannot be faked in-process.
