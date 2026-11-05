@@ -5,15 +5,14 @@ agent/
 .codegraph/
 skills-lock.json
 WORKFLOW.md
-epics/
-tasks/
-SPEC.md
-STACK.md
 docs/ideas/
+generator/TESTING.md
+.opencode/opencode.jsonc
 
 # Build and runtime output
 backend/target/
 __pycache__/
+.pytest_cache/
 .venv/
 
 # OS / editor
