@@ -2,17 +2,16 @@
 
 import importlib.util
 import json
-from pathlib import Path
 import random
 import re
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
-
 
 SCRIPT = Path(__file__).resolve().parents[1] / "generator.py"
 

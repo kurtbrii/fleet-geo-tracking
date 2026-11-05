@@ -1,8 +1,8 @@
 """Fleet state for the vehicle simulator."""
 
-from dataclasses import dataclass
 import math
 import random
+from dataclasses import dataclass
 
 LAT_MIN, LAT_MAX = 14.35, 14.78
 LNG_MIN, LNG_MAX = 120.90, 121.13
