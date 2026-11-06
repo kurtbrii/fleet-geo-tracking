@@ -117,6 +117,24 @@ mvn package -Dnative
 
 ---
 
+## Development checks
+
+Prerequisites: [uv](https://docs.astral.sh/uv/), and gitleaks (`brew install gitleaks`).
+
+```bash
+uv sync --locked          # installs ruff, pyrefly, pytest-cov and lefthook at the pinned versions
+uv run lefthook install   # once per clone: wires the git hooks
+```
+
+The checks live in `lefthook.yml`:
+
+- **On commit:** ruff fixes lint and formatting on staged Python files and re-stages them; commits with suppression comments (`# noqa`, `# type: ignore`, `# pyrefly: ignore`) are blocked.
+- **On push:** lockfile check, `ruff check`, `ruff format --check`, `pyrefly check`, the suppression check, tests with an 80% coverage floor, and a gitleaks scan of the full git history.
+
+Run everything by hand with `uv run lefthook run pre-push --all-files`. CI runs that same command on every push and pull request, so local and CI checks can't drift apart.
+
+---
+
 ## Benchmarks
 
 Fill in only from measured runs. Record hardware with every result.
