@@ -25,7 +25,7 @@ class FixedDrift(random.Random):
         super().__init__(0)
         self.drift = drift
 
-    def uniform(self, low: float, high: float) -> float:
+    def uniform(self, a: float, b: float) -> float:
         return self.drift
 
 
