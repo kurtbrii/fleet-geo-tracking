@@ -1,12 +1,12 @@
 """Command-line entry point for the vehicle simulator."""
 
 import argparse
-from collections.abc import Callable
 import itertools
 import json
 import random
 import sys
 import time
+from collections.abc import Callable
 
 from simulator import Vehicle, advance_vehicle, create_fleet
 

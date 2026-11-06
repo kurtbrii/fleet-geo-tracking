@@ -1,8 +1,8 @@
 """Fleet state for the vehicle simulator."""
 
-from dataclasses import dataclass
 import math
 import random
+from dataclasses import dataclass
 
 LAT_MIN, LAT_MAX = 14.35, 14.78
 LNG_MIN, LNG_MAX = 120.90, 121.13
@@ -122,4 +122,4 @@ def plate_for_index(index: int) -> str:
     if not 0 <= index < 26**3 * 10_000:
         raise ValueError("plate index is outside the plate space")
     letters, digits = divmod(index, 10_000)
-    return f"{chr(65 + letters // 676)}" f"{chr(65 + letters // 26 % 26)}" f"{chr(65 + letters % 26)}" f"{digits:04d}"
+    return f"{chr(65 + letters // 676)}{chr(65 + letters // 26 % 26)}{chr(65 + letters % 26)}{digits:04d}"

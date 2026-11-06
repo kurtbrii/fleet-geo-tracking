@@ -9,5 +9,22 @@ package = false
 
 [dependency-groups]
 dev = [
+    "lefthook==2.2.2",
+    "pyrefly==1.4.0",
     "pytest==9.2.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.1",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = ["I", "C901", "PLR0911", "PLR0912", "PLR0913"]
+
+[tool.pyrefly]
+# "." first so `generator` resolves to the folder (tests), "generator" for the script's `import simulator`.
+search-path = [".", "generator"]
+
+[tool.coverage.run]
+omit = ["*/tests/*"]

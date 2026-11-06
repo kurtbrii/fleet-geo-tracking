@@ -7,12 +7,19 @@ skills-lock.json
 WORKFLOW.md
 docs/ideas/
 generator/TESTING.md
+
+# Internal planning docs (specs, plans, task lists)
+epics/
+tasks/
+/SPEC.md
+/STACK.md
 .opencode/opencode.jsonc
 
 # Build and runtime output
 backend/target/
 __pycache__/
 .pytest_cache/
+.coverage
 .venv/
 
 # OS / editor
