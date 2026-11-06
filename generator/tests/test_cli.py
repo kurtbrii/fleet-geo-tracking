@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -32,6 +33,22 @@ class FakeClock:
 
     def spend(self, seconds: float) -> None:
         self.seconds += seconds
+
+
+class FakeProducer:
+    """Records produced messages so tests never need a broker."""
+
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str, str]] = []
+
+    def produce(self, topic: str, key: str, value: str) -> None:
+        self.messages.append((topic, key, value))
+
+    def poll(self, timeout: float) -> int:
+        return 0
+
+    def records(self) -> list[dict[str, Any]]:
+        return [json.loads(value) for _, _, value in self.messages]
 
 
 def _load_cli_module() -> ModuleType:
@@ -65,16 +82,20 @@ def test_help_describes_defaults() -> None:
 def test_small_fleet_emits_initial_and_advanced_tick(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Emit two valid snapshots that keep identity and speed while moving."""
+    """Publish two valid snapshots, keyed by plate, without printing them."""
     cli = _load_cli_module()
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "3", "--interval-ms", "2000"])
     options = cli.parse_options()
     fake = FakeClock()
+    producer = FakeProducer()
 
-    cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=1)
+    cli.run_simulation(options, producer, clock=fake.now, wait=fake.wait, tick_limit=1)
 
-    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    records = producer.records()
     assert len(records) == 6
+    assert all(topic == "fleet.positions" for topic, _, _ in producer.messages)
+    assert [key for _, key, _ in producer.messages] == [record["id"] for record in records]
+    assert capsys.readouterr().out == ""
     initial, advanced = records[:3], records[3:]
     assert [record["id"] for record in initial] == [record["id"] for record in advanced]
     assert len({record["id"] for record in initial}) == 3
@@ -95,21 +116,22 @@ def test_small_fleet_emits_initial_and_advanced_tick(
 
 
 def test_default_options_emit_initial_and_advanced_tick(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Use the documented 1000-vehicle default for both emitted snapshots."""
+    """Use the documented 1000-vehicle default for both published snapshots."""
     cli = _load_cli_module()
     monkeypatch.setattr(sys, "argv", [str(SCRIPT)])
     options = cli.parse_options()
     fake = FakeClock()
+    producer = FakeProducer()
 
-    cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=1)
+    cli.run_simulation(options, producer, clock=fake.now, wait=fake.wait, tick_limit=1)
 
-    assert len(capsys.readouterr().out.splitlines()) == 2000
+    assert len(producer.messages) == 2000
 
 
 def test_later_ticks_wait_for_the_target_interval(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Wait the full interval before each later tick."""
     cli = _load_cli_module()
@@ -117,13 +139,13 @@ def test_later_ticks_wait_for_the_target_interval(
     options = cli.parse_options()
     fake = FakeClock()
 
-    cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=3)
+    cli.run_simulation(options, FakeProducer(), clock=fake.now, wait=fake.wait, tick_limit=3)
 
     assert fake.waits == [1.0, 1.0, 1.0]
 
 
 def test_movement_uses_measured_elapsed_time(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Move by the real clock delta even when the wait runs late."""
     cli = _load_cli_module()
@@ -141,30 +163,32 @@ def test_movement_uses_measured_elapsed_time(
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"])
     options = cli.parse_options()
 
-    cli.run_simulation(options, clock=fake.now, wait=late_wait, tick_limit=1)
+    producer = FakeProducer()
 
-    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    cli.run_simulation(options, producer, clock=fake.now, wait=late_wait, tick_limit=1)
+
+    records = producer.records()
     assert len(records) == 2
     assert (records[1]["lat"], records[1]["lng"]) == (expected.lat, expected.lng)
 
 
 def test_slow_output_is_absorbed_without_catch_up_ticks(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Tick immediately after slow output instead of bursting to catch up."""
+    """Tick immediately after slow publishing instead of bursting to catch up."""
     cli = _load_cli_module()
     fake = FakeClock()
-    emit_snapshot = cli.emit_snapshot
+    publish_snapshot = cli.publish_snapshot
 
-    def slow_emit(fleet: list[object], ts: int) -> None:
-        emit_snapshot(fleet, ts)
+    def slow_publish(producer: FakeProducer, fleet: list[object], ts: int) -> None:
+        publish_snapshot(producer, fleet, ts)
         fake.spend(2.5)
 
-    monkeypatch.setattr(cli, "emit_snapshot", slow_emit)
+    monkeypatch.setattr(cli, "publish_snapshot", slow_publish)
     monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--vehicles", "1", "--interval-ms", "1000"])
     options = cli.parse_options()
 
-    cli.run_simulation(options, clock=fake.now, wait=fake.wait, tick_limit=2)
+    cli.run_simulation(options, FakeProducer(), clock=fake.now, wait=fake.wait, tick_limit=2)
 
     assert fake.waits == [0.0, 0.0]
 
@@ -215,7 +239,7 @@ def test_main_exits_cleanly_on_keyboard_interrupt(
     cli = _load_cli_module()
     monkeypatch.setattr(cli, "parse_options", lambda: SimpleNamespace(vehicles=1, interval_ms=1000))
 
-    def interrupted(options: SimpleNamespace) -> None:
+    def interrupted(options: SimpleNamespace, producer: object) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "run_simulation", interrupted)
@@ -224,25 +248,21 @@ def test_main_exits_cleanly_on_keyboard_interrupt(
 
 
 def test_process_stops_cleanly_on_interrupt() -> None:
-    """Stop the real CLI with SIGINT without a traceback."""
+    """Stop the real CLI with SIGINT without a traceback, broker or not."""
     process = subprocess.Popen(
         [sys.executable, str(SCRIPT), "--vehicles", "2", "--interval-ms", "10"],
-        stdout=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
     )
-    assert process.stdout is not None and process.stderr is not None
     try:
-        lines = [process.stdout.readline() for _ in range(4)]
+        time.sleep(0.5)  # let it reach the produce loop
         process.send_signal(signal.SIGINT)
-        returncode = process.wait(timeout=10)
-        stderr = process.stderr.read()
+        _, stderr = process.communicate(timeout=10)
     finally:
         if process.poll() is None:
             process.kill()
             process.wait()
 
-    assert returncode == 0
-    assert stderr == ""
-    assert len(lines) == 4
-    assert all(json.loads(line) for line in lines)
+    assert process.returncode == 0
+    assert "Traceback" not in stderr  # librdkafka may log "connection refused" when no broker runs
