@@ -1,0 +1,31 @@
+# The single list of checks. CI runs `lefthook run pre-push --all-files`, so local and CI can't drift.
+
+pre-commit:
+  commands:
+    ruff-fix:
+      glob: "*.py"
+      run: uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+    suppressions:
+      run: "! git grep --cached -nE '#[[:space:]]*(noqa|type:[[:space:]]*ignore|pyrefly:[[:space:]]*ignore)' -- '*.py'"
+
+pre-push:
+  commands:
+    lockfile:
+      run: uv lock --check
+    ruff-check:
+      run: uv run ruff check
+    ruff-format:
+      run: uv run ruff format --check
+    pyrefly:
+      run: uv run pyrefly check
+    suppressions:
+      run: "! git grep -nE '#[[:space:]]*(noqa|type:[[:space:]]*ignore|pyrefly:[[:space:]]*ignore)' -- '*.py'"
+    tests:
+      run: uv run python -m pytest generator/tests -q --cov=generator --cov-fail-under=80
+    gitleaks:
+      run: gitleaks git --redact --no-banner
