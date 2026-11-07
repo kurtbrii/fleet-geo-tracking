@@ -4,7 +4,6 @@ import argparse
 import itertools
 import json
 import random
-import subprocess
 import time
 from collections.abc import Callable
 
@@ -79,16 +78,14 @@ def run_simulation(
             key=b"AAA0000"
             value={"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}
     """
-    subprocess.run(["clear"], shell=True, check=False)
-
     rng = random.Random()
 
-    # ! create the vehicles at their starting positions
+    # ! create the vehicles at random starting positions
     fleet = create_fleet(options.vehicles, rng)
     interval_seconds = options.interval_ms / 1000.0
     previous = clock()
 
-    # ! this is the initial publish_snapshot after the vehicles are created
+    # ! publish the starting positions right away, so consumers see the whole fleet before the first tick
     stats = DeliveryStats()
     window_start = previous
     publish_snapshot(producer, fleet, time.time_ns() // 1_000_000, stats)

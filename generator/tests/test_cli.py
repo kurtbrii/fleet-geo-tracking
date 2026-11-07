@@ -101,7 +101,7 @@ def test_help_describes_defaults() -> None:
     assert "default: 1000" in result.stdout
 
 
-def test_small_fleet_emits_initial_and_advanced_tick(
+def test_small_fleet_publishes_initial_and_advanced_tick(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Publish two valid snapshots, keyed by plate, without printing them."""
@@ -137,7 +137,7 @@ def test_small_fleet_emits_initial_and_advanced_tick(
         assert (first["lat"], first["lng"]) != (second["lat"], second["lng"])
 
 
-def test_default_options_emit_initial_and_advanced_tick(
+def test_default_options_publish_initial_and_advanced_tick(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Use the documented 1000-vehicle default for both published snapshots."""
@@ -319,12 +319,13 @@ def test_process_stops_cleanly_on_interrupt() -> None:
     """Stop the real CLI with SIGINT without a traceback, broker or not."""
     process = subprocess.Popen(
         [sys.executable, str(SCRIPT), "--vehicles", "2", "--interval-ms", "10"],
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     try:
-        time.sleep(0.5)  # let it reach the produce loop
+        assert process.stdout is not None
+        first_report = process.stdout.readline()  # proves the produce loop is running
         process.send_signal(signal.SIGINT)
         _, stderr = process.communicate(timeout=10)
     finally:
@@ -332,5 +333,6 @@ def test_process_stops_cleanly_on_interrupt() -> None:
             process.kill()
             process.wait()
 
+    assert first_report.startswith("sent ")
     assert process.returncode == 0
     assert "Traceback" not in stderr  # librdkafka may log "connection refused" when no broker runs
