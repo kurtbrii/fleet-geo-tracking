@@ -2,7 +2,9 @@
 name = "fleet-geo-tracking"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "confluent-kafka==2.16.0",
+]
 
 [tool.uv]
 package = false

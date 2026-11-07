@@ -4,10 +4,11 @@ import argparse
 import itertools
 import json
 import random
-import sys
 import time
 from collections.abc import Callable
 
+from confluent_kafka import Producer
+from delivery import DeliveryStats, report_activity
 from simulator import Vehicle, advance_vehicle, create_fleet
 
 
@@ -39,53 +40,89 @@ def main() -> None:
         None; runs until interrupted, then exits without a traceback
     """
     options = parse_options()
+    producer = Producer({"bootstrap.servers": "127.0.0.1:9092", "message.timeout.ms": 10000})
     try:
-        run_simulation(options)
+        run_simulation(options, producer)
     except KeyboardInterrupt:
         pass
 
 
 def run_simulation(
     options: argparse.Namespace,
+    producer: Producer,
     *,
     clock: Callable[[], float] = time.monotonic,
     wait: Callable[[float], None] = time.sleep,
     tick_limit: int | None = None,
 ) -> None:
-    """Create the fleet, emit it, then emit one tick per target interval.
+    """Create the fleet, publish it, then publish one tick per target interval.
 
     Args:
-        options: argparse.Namespace(vehicles=2, interval_ms=2000)
-        clock: time.monotonic
-        wait: time.sleep
-        tick_limit: None runs until interrupted; 3 emits three later ticks
+        options: The parsed command-line options. ex:
+            argparse.Namespace(
+                vehicles=2,
+                interval_ms=2000,
+            )
+        producer: The Kafka producer that sends each position. ex:
+            Producer({
+                "bootstrap.servers": "127.0.0.1:9092",
+                "message.timeout.ms": 10000,
+            })
+        clock: Monotonic seconds, used to measure each tick. ex: time.monotonic
+        wait: Sleeps for the rest of the interval. ex: time.sleep
+        tick_limit: How many ticks to run after the first snapshot; None runs
+            until interrupted. ex: 3
 
     Returns:
-        None; writes one snapshot of two JSON records per tick
+        None; produces one message per vehicle per tick to fleet.positions. ex:
+            key=b"AAA0000"
+            value={"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}
     """
     rng = random.Random()
+
+    # ! create the vehicles at random starting positions
     fleet = create_fleet(options.vehicles, rng)
     interval_seconds = options.interval_ms / 1000.0
     previous = clock()
-    emit_snapshot(fleet, time.time_ns() // 1_000_000)
+
+    # ! publish the starting positions right away, so consumers see the whole fleet before the first tick
+    stats = DeliveryStats()
+    window_start = previous
+    publish_snapshot(producer, fleet, time.time_ns() // 1_000_000, stats)
     ticks = itertools.count() if tick_limit is None else range(tick_limit)
+
     for _ in ticks:
         wait(max(0.0, interval_seconds - (clock() - previous)))  # sleep only what's left of the interval
         now = clock()
         fleet = [advance_vehicle(vehicle, now - previous, rng) for vehicle in fleet]
-        emit_snapshot(fleet, time.time_ns() // 1_000_000)
+        publish_snapshot(producer, fleet, time.time_ns() // 1_000_000, stats)
+        producer.poll(0)  # serve delivery callbacks without blocking
+        if now - window_start >= 1.0:
+            report_activity(stats, now - window_start)
+            window_start = now
         previous = now
 
 
-def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
-    """Write one JSON record per vehicle for a single tick.
+def publish_snapshot(producer: Producer, fleet: list[Vehicle], ts: int, stats: DeliveryStats) -> None:
+    """Produce one message per vehicle for a single tick, keyed by its plate.
 
     Args:
-        fleet: [Vehicle(id="AAA0000", lat=14.5, lng=121.0, bearing=90.0, speed=45.0)]
-        ts: 1793400000000
+        producer: The Kafka producer that sends each position. ex:
+            Producer({
+                "bootstrap.servers": "127.0.0.1:9092",
+            })
+        fleet: Every vehicle's position at this tick. ex:
+            [
+                Vehicle(id="AAA0000", lat=14.5, lng=121.0, bearing=90.0, speed=45.0),
+            ]
+        ts: Epoch milliseconds stamped on every record. ex: 1793400000000
+        stats: This window's delivery counts; a full local queue counts as failed. ex:
+            DeliveryStats(sent=0, failed=0, last_error="")
 
     Returns:
-        None; writes {"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}
+        None; queues one message per vehicle on fleet.positions. ex:
+            key="AAA0000"
+            value='{"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}'
     """
     for vehicle in fleet:
         vehicle_record: dict[str, str | float | int] = {
@@ -97,8 +134,13 @@ def emit_snapshot(fleet: list[Vehicle], ts: int) -> None:
             "ts": ts,
         }
 
-        print(json.dumps(vehicle_record))
-    sys.stdout.flush()
+        try:
+            producer.produce(
+                "fleet.positions", key=vehicle.id, value=json.dumps(vehicle_record), on_delivery=stats.record
+            )
+        except BufferError as error:  # local queue full: count it, keep producing
+            stats.failed += 1
+            stats.last_error = str(error)
 
 
 if __name__ == "__main__":
