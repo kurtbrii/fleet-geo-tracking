@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable
 
 from confluent_kafka import Producer
+from delivery import DeliveryStats, report_activity
 from simulator import Vehicle, advance_vehicle, create_fleet
 
 
@@ -79,22 +80,33 @@ def run_simulation(
             value={"id": "AAA0000", "lat": 14.5, "lng": 121.0, "bearing": 90.0, "speed": 45.0, "ts": 1793400000000}
     """
     subprocess.run(["clear"], shell=True, check=False)
+
     rng = random.Random()
+
+    # ! create the vehicles at their starting positions
     fleet = create_fleet(options.vehicles, rng)
     interval_seconds = options.interval_ms / 1000.0
     previous = clock()
-    publish_snapshot(producer, fleet, time.time_ns() // 1_000_000)
+
+    # ! this is the initial publish_snapshot after the vehicles are created
+    stats = DeliveryStats()
+    window_start = previous
+    publish_snapshot(producer, fleet, time.time_ns() // 1_000_000, stats)
     ticks = itertools.count() if tick_limit is None else range(tick_limit)
+
     for _ in ticks:
         wait(max(0.0, interval_seconds - (clock() - previous)))  # sleep only what's left of the interval
         now = clock()
         fleet = [advance_vehicle(vehicle, now - previous, rng) for vehicle in fleet]
-        publish_snapshot(producer, fleet, time.time_ns() // 1_000_000)
+        publish_snapshot(producer, fleet, time.time_ns() // 1_000_000, stats)
         producer.poll(0)  # serve delivery callbacks without blocking
+        if now - window_start >= 1.0:
+            report_activity(stats, now - window_start)
+            window_start = now
         previous = now
 
 
-def publish_snapshot(producer: Producer, fleet: list[Vehicle], ts: int) -> None:
+def publish_snapshot(producer: Producer, fleet: list[Vehicle], ts: int, stats: DeliveryStats) -> None:
     """Produce one message per vehicle for a single tick, keyed by its plate.
 
     Args:
@@ -107,6 +119,8 @@ def publish_snapshot(producer: Producer, fleet: list[Vehicle], ts: int) -> None:
                 Vehicle(id="AAA0000", lat=14.5, lng=121.0, bearing=90.0, speed=45.0),
             ]
         ts: Epoch milliseconds stamped on every record. ex: 1793400000000
+        stats: This window's delivery counts; a full local queue counts as failed. ex:
+            DeliveryStats(sent=0, failed=0, last_error="")
 
     Returns:
         None; queues one message per vehicle on fleet.positions. ex:
@@ -123,7 +137,13 @@ def publish_snapshot(producer: Producer, fleet: list[Vehicle], ts: int) -> None:
             "ts": ts,
         }
 
-        producer.produce("fleet.positions", key=vehicle.id, value=json.dumps(vehicle_record))
+        try:
+            producer.produce(
+                "fleet.positions", key=vehicle.id, value=json.dumps(vehicle_record), on_delivery=stats.record
+            )
+        except BufferError as error:  # local queue full: count it, keep producing
+            stats.failed += 1
+            stats.last_error = str(error)
 
 
 if __name__ == "__main__":
